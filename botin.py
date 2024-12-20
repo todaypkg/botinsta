@@ -1,94 +1,116 @@
 import telebot
-import os
 import threading
 import time
 import random
 import string
+import os
 
-# استخدام متغير البيئة لتخزين توكن البوت
-bot_token = os.getenv('BOT_TOKEN')
-if not bot_token:
-    raise ValueError("الرجاء تعيين متغير البيئة BOT_TOKEN")
-
+# الحصول على توكن البوت من متغير بيئة
+bot_token = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN')
 bot = telebot.TeleBot(bot_token)
 
-# Dictionary لتخزين بيانات المستخدمين
+# بيانات المستخدمين المسجلين
 user_data = {}
 
-# قائمة المستخدمين الرباعيين لفحصها
-all_possible_users = [
-    ''.join(comb) for comb in (
-        (a+b+c+d) for a in string.ascii_lowercase for b in string.ascii_lowercase 
-        for c in string.ascii_lowercase for d in string.ascii_lowercase
-    )
-]
+# دالة لتوليد اسم مستخدم عشوائي رباعي
+def generate_random_username():
+    pattern = random.choice(["letters", "numbers", "mixed"])
+    if pattern == "letters":
+        return ''.join(random.choices(string.ascii_lowercase, k=4))
+    elif pattern == "numbers":
+        return ''.join(random.choices(string.digits, k=4))
+    elif pattern == "mixed":
+        return ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
 
-# رسالة الترحيب وزرين لإضافة الحساب
+# إرسال رسالة الترحيب
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add('إضافة حساب إنستغرام', 'إضافة حساب تيك توك')
     bot.send_message(message.chat.id, "اختر نوع الحساب الذي تريد إضافته:", reply_markup=markup)
 
-# إضافة حساب إنستغرام
+# تسجيل حساب إنستغرام
 @bot.message_handler(func=lambda message: message.text == 'إضافة حساب إنستغرام')
 def add_instagram_account(message):
-    bot.send_message(message.chat.id, "رجاءً أدخل اسم المستخدم لحساب إنستغرام الخاص بك:")
-    bot.register_next_step_handler(message, save_instagram_username)
+    bot.send_message(message.chat.id, "أدخل اسم المستخدم لحساب إنستغرام:")
+    bot.register_next_step_handler(message, ask_instagram_password)
 
-def save_instagram_username(message):
+def ask_instagram_password(message):
     username = message.text
-    user_data[message.chat.id] = {'instagram': username}
-    bot.send_message(message.chat.id, f"تم تسجيل حساب إنستغرام الخاص بك: {username}")
-    # بدء الفحص الخاص بإنستغرام
-    threading.Thread(target=check_instagram_users, args=(message.chat.id, username)).start()
+    user_data[message.chat.id] = {'platform': 'instagram', 'username': username}
+    bot.send_message(message.chat.id, "أدخل كلمة المرور لحساب إنستغرام:")
+    bot.register_next_step_handler(message, ask_instagram_continue)
 
-# إضافة حساب تيك توك
+def ask_instagram_continue(message):
+    password = message.text
+    chat_id = message.chat.id
+    user_data[chat_id]['password'] = password
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('نعم', 'لا')
+    bot.send_message(chat_id, "تم تسجيل الحساب بنجاح! هل تريد البدء في البحث عن أسماء مستخدم رباعية شاغرة لحسابك؟", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_instagram_decision)
+
+def handle_instagram_decision(message):
+    if message.text == 'نعم':
+        bot.send_message(message.chat.id, "تم البدء في البحث عن أسماء مستخدم رباعية شاغرة...")
+        threading.Thread(target=check_instagram_users, args=(message.chat.id,)).start()
+    else:
+        bot.send_message(message.chat.id, "يمكنك إضافة حساب آخر من خلال القائمة.")
+
+# تسجيل حساب تيك توك
 @bot.message_handler(func=lambda message: message.text == 'إضافة حساب تيك توك')
 def add_tiktok_account(message):
-    bot.send_message(message.chat.id, "رجاءً أدخل اسم المستخدم لحساب تيك توك الخاص بك:")
-    bot.register_next_step_handler(message, save_tiktok_username)
+    bot.send_message(message.chat.id, "أدخل اسم المستخدم لحساب تيك توك:")
+    bot.register_next_step_handler(message, ask_tiktok_password)
 
-def save_tiktok_username(message):
+def ask_tiktok_password(message):
     username = message.text
-    user_data[message.chat.id] = {'tiktok': username}
-    bot.send_message(message.chat.id, f"تم تسجيل حساب تيك توك الخاص بك: {username}")
-    # بدء الفحص الخاص بتيك توك
-    threading.Thread(target=check_tiktok_users, args=(message.chat.id, username)).start()
+    user_data[message.chat.id] = {'platform': 'tiktok', 'username': username}
+    bot.send_message(message.chat.id, "أدخل كلمة المرور لحساب تيك توك:")
+    bot.register_next_step_handler(message, ask_tiktok_continue)
 
-# فحص المستخدمين في إنستغرام
-def check_instagram_users(chat_id, username):
-    checked_users = 0
-    available_users = []
-    for user in all_possible_users:
-        # محاكاة عملية الفحص
-        time.sleep(0.1)
-        checked_users += 1
-        if random.choice([True, False]):  # اعتبر أن المستخدم متاح عشوائيًا
-            available_users.append(user)
-            # تسجيله وربطه بالحساب
-            print(f"ربط المستخدم {user} بحساب {username}")
-        if checked_users >= 1000:  # التوقف بعد 1000 فحص
-            break
-    bot.send_message(chat_id, f"تم فحص {checked_users} مستخدم. وجدنا {len(available_users)} مستخدم متاح.")
+def ask_tiktok_continue(message):
+    password = message.text
+    chat_id = message.chat.id
+    user_data[chat_id]['password'] = password
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('نعم', 'لا')
+    bot.send_message(chat_id, "تم تسجيل الحساب بنجاح! هل تريد البدء في البحث عن أسماء مستخدم رباعية شاغرة لحسابك؟", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_tiktok_decision)
 
-# فحص المستخدمين في تيك توك
-def check_tiktok_users(chat_id, username):
-    checked_users = 0
-    available_users = []
-    for user in all_possible_users:
-        # محاكاة عملية الفحص
-        time.sleep(0.1)
-        checked_users += 1
-        if random.choice([True, False]):  # اعتبر أن المستخدم متاح عشوائيًا
-            available_users.append(user)
-            # تسجيله وربطه بالحساب
-            print(f"ربط المستخدم {user} بحساب {username}")
-        if checked_users >= 1000:  # التوقف بعد 1000 فحص
-            break
-    bot.send_message(chat_id, f"تم فحص {checked_users} مستخدم. وجدنا {len(available_users)} مستخدم متاح.")
+def handle_tiktok_decision(message):
+    if message.text == 'نعم':
+        bot.send_message(message.chat.id, "تم البدء في البحث عن أسماء مستخدم رباعية شاغرة...")
+        threading.Thread(target=check_tiktok_users, args=(message.chat.id,)).start()
+    else:
+        bot.send_message(message.chat.id, "يمكنك إضافة حساب آخر من خلال القائمة.")
+
+# فحص الأسماء الرباعية في إنستغرام
+def check_instagram_users(chat_id):
+    platform = 'إنستغرام'
+    bot.send_message(chat_id, f"بدء فحص الأسماء الرباعية على {platform}...")
+    while True:  # عدد غير محدود من المحاولات
+        random_username = generate_random_username()
+        time.sleep(random.uniform(2, 5))  # تأخير عشوائي بين المحاولات
+        if random.choice([True, False]):  # افتراض أن الاسم الشاغر متاح
+            bot.send_message(chat_id, f"الاسم '{random_username}' متاح على {platform}! سأقوم باستخدامه بحسابك...")
+            time.sleep(2)  # محاكاة تغيير الاسم
+            bot.send_message(chat_id, f"تم تغيير اسم حسابك على {platform} إلى: {random_username}")
+            break  # إذا تم العثور على اسم شاغر، تتوقف العملية.
+
+# فحص الأسماء الرباعية في تيك توك
+def check_tiktok_users(chat_id):
+    platform = 'تيك توك'
+    bot.send_message(chat_id, f"بدء فحص الأسماء الرباعية على {platform}...")
+    while True:  # عدد غير محدود من المحاولات
+        random_username = generate_random_username()
+        time.sleep(random.uniform(2, 5))  # تأخير عشوائي بين المحاولات
+        if random.choice([True, False]):  # افتراض أن الاسم الشاغر متاح
+            bot.send_message(chat_id, f"الاسم '{random_username}' متاح على {platform}! سأقوم باستخدامه بحسابك...")
+            time.sleep(2)  # محاكاة تغيير الاسم
+            bot.send_message(chat_id, f"تم تغيير اسم حسابك على {platform} إلى: {random_username}")
+            break  # إذا تم العثور على اسم شاغر، تتوقف العملية.
 
 # تشغيل البوت
 print("Bot is running...")
 bot.infinity_polling()
-                     
